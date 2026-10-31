@@ -1,0 +1,173 @@
+{
+  "name": "pl_load_dw",
+  "properties": {
+    "description": "Lake \u2192 staging tables \u2192 dimensions and facts (MERGE) \u2192 data quality checks.",
+    "parameters": {
+      "LoadDate": {
+        "type": "string"
+      },
+      "StagingTables": {
+        "type": "array",
+        "defaultValue": [
+          {
+            "source": "erp",
+            "table": "MARA"
+          },
+          {
+            "source": "erp",
+            "table": "LFA1"
+          },
+          {
+            "source": "erp",
+            "table": "EKKO"
+          },
+          {
+            "source": "erp",
+            "table": "EKPO"
+          },
+          {
+            "source": "erp",
+            "table": "MARD"
+          },
+          {
+            "source": "erp",
+            "table": "T001W"
+          },
+          {
+            "source": "DealerPortal",
+            "table": "Dealers"
+          },
+          {
+            "source": "DealerPortal",
+            "table": "DealerOrders"
+          },
+          {
+            "source": "Quality",
+            "table": "GoodsReceipts"
+          }
+        ]
+      }
+    },
+    "activities": [
+      {
+        "name": "ForEach staging table",
+        "type": "ForEach",
+        "typeProperties": {
+          "items": {
+            "value": "@pipeline().parameters.StagingTables",
+            "type": "Expression"
+          },
+          "isSequential": false,
+          "batchCount": 4,
+          "activities": [
+            {
+              "name": "Copy lake to staging",
+              "type": "Copy",
+              "policy": {
+                "timeout": "0.02:00:00",
+                "retry": 2,
+                "retryIntervalInSeconds": 120,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "inputs": [
+                {
+                  "referenceName": "ds_lake_parquet",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "Source": "@item().source",
+                    "TableName": "@item().table",
+                    "LoadDate": {
+                      "value": "@formatDateTime(pipeline().parameters.LoadDate, 'yyyy-MM-dd')",
+                      "type": "Expression"
+                    }
+                  }
+                }
+              ],
+              "outputs": [
+                {
+                  "referenceName": "ds_azuresql_table",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "SchemaName": "stg",
+                    "TableName": "@item().table"
+                  }
+                }
+              ],
+              "typeProperties": {
+                "source": {
+                  "type": "ParquetSource"
+                },
+                "sink": {
+                  "type": "AzureSqlSink",
+                  "preCopyScript": {
+                    "value": "TRUNCATE TABLE stg.@{item().table}",
+                    "type": "Expression"
+                  },
+                  "tableOption": "none"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Load dimensions",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [
+          {
+            "activity": "ForEach staging table",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "linkedServiceName": {
+          "referenceName": "ls_azuresql_dw",
+          "type": "LinkedServiceReference"
+        },
+        "typeProperties": {
+          "storedProcedureName": "dw.usp_LoadDimensions"
+        }
+      },
+      {
+        "name": "Load facts",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [
+          {
+            "activity": "Load dimensions",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "linkedServiceName": {
+          "referenceName": "ls_azuresql_dw",
+          "type": "LinkedServiceReference"
+        },
+        "typeProperties": {
+          "storedProcedureName": "dw.usp_LoadFacts"
+        }
+      },
+      {
+        "name": "Data quality checks",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [
+          {
+            "activity": "Load facts",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "linkedServiceName": {
+          "referenceName": "ls_azuresql_dw",
+          "type": "LinkedServiceReference"
+        },
+        "typeProperties": {
+          "storedProcedureName": "control.usp_DataQualityChecks"
+        }
+      }
+    ]
+  }
+}

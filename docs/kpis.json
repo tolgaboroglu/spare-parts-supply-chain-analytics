@@ -1,0 +1,30 @@
+{
+  "as_of": "20251231",
+  "stock_value": 807651,
+  "critical_parts": 8,
+  "parts": 201,
+  "suppliers": 24,
+  "fill_rate": 0.9782,
+  "sales_value_12m": 6894181,
+  "order_lines_12m": 35373,
+  "stock_turnover": 8.21,
+  "days_of_inventory": 44.4,
+  "slow_moving_value": 90542,
+  "slow_moving_parts": 8,
+  "slow_moving_share": 0.1121,
+  "receipts_12m": 5965,
+  "on_time_delivery": 0.8634,
+  "avg_delay_late_days": 8.8,
+  "rejection_rate": 0.0132,
+  "rows": {
+    "dim_part": 201,
+    "dim_supplier": 24,
+    "dim_dealer": 16,
+    "dim_warehouse": 3,
+    "dim_date": 731,
+    "fact_dealer_order_line": 71339,
+    "fact_purchase_order_line": 12212,
+    "fact_goods_receipt": 11823,
+    "fact_stock_monthly": 14472
+  }
+}

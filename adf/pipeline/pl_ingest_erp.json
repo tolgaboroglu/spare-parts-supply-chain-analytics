@@ -1,0 +1,107 @@
+{
+  "name": "pl_ingest_erp",
+  "properties": {
+    "description": "Copy SAP tables to the lake. Master data is copied in full; purchasing documents are filtered on change date.",
+    "parameters": {
+      "LoadDate": {
+        "type": "string"
+      },
+      "Tables": {
+        "type": "array",
+        "defaultValue": [
+          {
+            "table": "MARA",
+            "filter": ""
+          },
+          {
+            "table": "LFA1",
+            "filter": ""
+          },
+          {
+            "table": "EKKO",
+            "filter": "AEDAT >= '@{watermark}'"
+          },
+          {
+            "table": "EKPO",
+            "filter": "AEDAT >= '@{watermark}'"
+          },
+          {
+            "table": "MARD",
+            "filter": ""
+          },
+          {
+            "table": "T001W",
+            "filter": ""
+          }
+        ]
+      }
+    },
+    "activities": [
+      {
+        "name": "ForEach SAP table",
+        "type": "ForEach",
+        "typeProperties": {
+          "items": {
+            "value": "@pipeline().parameters.Tables",
+            "type": "Expression"
+          },
+          "isSequential": false,
+          "batchCount": 3,
+          "activities": [
+            {
+              "name": "Copy SAP table to lake",
+              "type": "Copy",
+              "policy": {
+                "timeout": "0.02:00:00",
+                "retry": 2,
+                "retryIntervalInSeconds": 120,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "inputs": [
+                {
+                  "referenceName": "ds_sap_table",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "TableName": "@item().table"
+                  }
+                }
+              ],
+              "outputs": [
+                {
+                  "referenceName": "ds_lake_parquet",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "Source": "erp",
+                    "TableName": "@item().table",
+                    "LoadDate": {
+                      "value": "@formatDateTime(pipeline().parameters.LoadDate, 'yyyy-MM-dd')",
+                      "type": "Expression"
+                    }
+                  }
+                }
+              ],
+              "typeProperties": {
+                "source": {
+                  "type": "SapTableSource",
+                  "rfcTableOptions": {
+                    "value": "@item().filter",
+                    "type": "Expression"
+                  },
+                  "partitionOption": "PartitionOnCalendarDate"
+                },
+                "sink": {
+                  "type": "ParquetSink",
+                  "storeSettings": {
+                    "type": "AzureBlobFSWriteSettings"
+                  }
+                },
+                "enableStaging": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "name": "pl_ingest_sqlserver",
+  "properties": {
+    "description": "Incremental copy from on-prem SQL Server databases using a watermark per table (control.Watermark).",
+    "parameters": {
+      "LoadDate": {
+        "type": "string"
+      },
+      "Tables": {
+        "type": "array",
+        "defaultValue": [
+          {
+            "database": "DealerPortal",
+            "schema": "service",
+            "table": "Dealers",
+            "watermarkColumn": "ModifiedAt"
+          },
+          {
+            "database": "DealerPortal",
+            "schema": "service",
+            "table": "DealerOrders",
+            "watermarkColumn": "ModifiedAt"
+          },
+          {
+            "database": "Quality",
+            "schema": "qm",
+            "table": "GoodsReceipts",
+            "watermarkColumn": "ModifiedAt"
+          }
+        ]
+      }
+    },
+    "activities": [
+      {
+        "name": "ForEach SQL table",
+        "type": "ForEach",
+        "typeProperties": {
+          "items": {
+            "value": "@pipeline().parameters.Tables",
+            "type": "Expression"
+          },
+          "isSequential": false,
+          "batchCount": 3,
+          "activities": [
+            {
+              "name": "Lookup old watermark",
+              "type": "Lookup",
+              "typeProperties": {
+                "source": {
+                  "type": "AzureSqlSource",
+                  "sqlReaderQuery": {
+                    "value": "SELECT WatermarkValue FROM control.Watermark WHERE SourceTable = '@{item().schema}.@{item().table}'",
+                    "type": "Expression"
+                  }
+                },
+                "dataset": {
+                  "referenceName": "ds_azuresql_table",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "SchemaName": "control",
+                    "TableName": "Watermark"
+                  }
+                },
+                "firstRowOnly": true
+              }
+            },
+            {
+              "name": "Lookup new watermark",
+              "type": "Lookup",
+              "typeProperties": {
+                "source": {
+                  "type": "SqlServerSource",
+                  "sqlReaderQuery": {
+                    "value": "SELECT MAX(@{item().watermarkColumn}) AS NewWatermark FROM @{item().schema}.@{item().table}",
+                    "type": "Expression"
+                  }
+                },
+                "dataset": {
+                  "referenceName": "ds_sqlserver_table",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "DatabaseName": "@item().database",
+                    "SchemaName": "@item().schema",
+                    "TableName": "@item().table"
+                  }
+                },
+                "firstRowOnly": true
+              }
+            },
+            {
+              "name": "Copy changed rows to lake",
+              "type": "Copy",
+              "policy": {
+                "timeout": "0.02:00:00",
+                "retry": 2,
+                "retryIntervalInSeconds": 120,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "dependsOn": [
+                {
+                  "activity": "Lookup old watermark",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                },
+                {
+                  "activity": "Lookup new watermark",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "inputs": [
+                {
+                  "referenceName": "ds_sqlserver_table",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "DatabaseName": "@item().database",
+                    "SchemaName": "@item().schema",
+                    "TableName": "@item().table"
+                  }
+                }
+              ],
+              "outputs": [
+                {
+                  "referenceName": "ds_lake_parquet",
+                  "type": "DatasetReference",
+                  "parameters": {
+                    "Source": "@item().database",
+                    "TableName": "@item().table",
+                    "LoadDate": {
+                      "value": "@formatDateTime(pipeline().parameters.LoadDate, 'yyyy-MM-dd')",
+                      "type": "Expression"
+                    }
+                  }
+                }
+              ],
+              "typeProperties": {
+                "source": {
+                  "type": "SqlServerSource",
+                  "sqlReaderQuery": {
+                    "value": "SELECT * FROM @{item().schema}.@{item().table} WHERE @{item().watermarkColumn} > '@{activity('Lookup old watermark').output.firstRow.WatermarkValue}' AND @{item().watermarkColumn} <= '@{activity('Lookup new watermark').output.firstRow.NewWatermark}'",
+                    "type": "Expression"
+                  }
+                },
+                "sink": {
+                  "type": "ParquetSink",
+                  "storeSettings": {
+                    "type": "AzureBlobFSWriteSettings"
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update watermark",
+              "type": "SqlServerStoredProcedure",
+              "dependsOn": [
+                {
+                  "activity": "Copy changed rows to lake",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "linkedServiceName": {
+                "referenceName": "ls_azuresql_dw",
+                "type": "LinkedServiceReference"
+              },
+              "typeProperties": {
+                "storedProcedureName": "control.usp_UpdateWatermark",
+                "storedProcedureParameters": {
+                  "SourceTable": {
+                    "value": {
+                      "value": "@{item().schema}.@{item().table}",
+                      "type": "Expression"
+                    },
+                    "type": "String"
+                  },
+                  "WatermarkValue": {
+                    "value": {
+                      "value": "@{activity('Lookup new watermark').output.firstRow.NewWatermark}",
+                      "type": "Expression"
+                    },
+                    "type": "DateTime"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "ds_sqlserver_table",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_sqlserver_onprem",
+      "type": "LinkedServiceReference",
+      "parameters": {
+        "DatabaseName": {
+          "value": "@dataset().DatabaseName",
+          "type": "Expression"
+        }
+      }
+    },
+    "parameters": {
+      "DatabaseName": {
+        "type": "String"
+      },
+      "SchemaName": {
+        "type": "String"
+      },
+      "TableName": {
+        "type": "String"
+      }
+    },
+    "type": "SqlServerTable",
+    "typeProperties": {
+      "schema": {
+        "value": "@dataset().SchemaName",
+        "type": "Expression"
+      },
+      "table": {
+        "value": "@dataset().TableName",
+        "type": "Expression"
+      }
+    }
+  }
+}

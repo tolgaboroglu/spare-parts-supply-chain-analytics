@@ -1,0 +1,121 @@
+// Spare-parts supply chain: DAX measures
+// Model: dim_date (marked as date table) 1:* fact tables on OrderDateKey / ReceiptDateKey / SnapshotDateKey;
+//        dim_part, dim_supplier, dim_warehouse, dim_dealer 1:* facts (single direction).
+// Display folders in brackets.
+
+// ---------- [Inventory]
+
+Stock Value =
+// Semi-additive: value at the last month-end in the selected period
+CALCULATE (
+    SUM ( fact_stock_monthly[StockValue] ),
+    LASTNONBLANK ( dim_date[Date], CALCULATE ( COUNTROWS ( fact_stock_monthly ) ) )
+)
+
+Stock Quantity =
+CALCULATE (
+    SUM ( fact_stock_monthly[QuantityOnHand] ),
+    LASTNONBLANK ( dim_date[Date], CALCULATE ( COUNTROWS ( fact_stock_monthly ) ) )
+)
+
+Average Stock Value =
+AVERAGEX (
+    VALUES ( dim_date[YearMonth] ),
+    CALCULATE ( SUM ( fact_stock_monthly[StockValue] ) )
+)
+
+Critical Parts =
+// Parts whose stock over all warehouses is below the safety stock from the material master
+COUNTROWS (
+    FILTER (
+        VALUES ( dim_part[PartKey] ),
+        VAR qty = [Stock Quantity]
+        RETURN NOT ISBLANK ( qty ) && qty < CALCULATE ( MAX ( dim_part[SafetyStock] ) )
+    )
+)
+
+Critical Parts % =
+DIVIDE ( [Critical Parts], DISTINCTCOUNT ( fact_stock_monthly[PartKey] ) )
+
+Slow-moving Stock Value =
+// Stock that covers more than 12 months of shipped demand
+VAR periodEnd = MAX ( dim_date[Date] )
+RETURN
+    SUMX (
+        VALUES ( dim_part[PartKey] ),
+        VAR qty = [Stock Quantity]
+        VAR demand12m =
+            CALCULATE (
+                SUM ( fact_dealer_order_line[QuantityShipped] ),
+                DATESINPERIOD ( dim_date[Date], periodEnd, -12, MONTH )
+            )
+        RETURN IF ( qty > 0 && qty > demand12m, [Stock Value] )
+    )
+
+Slow-moving Share =
+DIVIDE ( [Slow-moving Stock Value], [Stock Value] )
+
+// ---------- [Demand & service level]
+
+Order Lines = COUNTROWS ( fact_dealer_order_line )
+
+Quantity Ordered = SUM ( fact_dealer_order_line[QuantityOrdered] )
+
+Quantity Shipped = SUM ( fact_dealer_order_line[QuantityShipped] )
+
+Sales Value = SUM ( fact_dealer_order_line[SalesValue] )
+
+Fill Rate =
+DIVIDE ( [Quantity Shipped], [Quantity Ordered] )
+
+Backorder Lines =
+CALCULATE ( [Order Lines], fact_dealer_order_line[Status] IN { "Backorder", "Partial" } )
+
+Sales Value PY =
+CALCULATE ( [Sales Value], SAMEPERIODLASTYEAR ( dim_date[Date] ) )
+
+Sales Value YoY % =
+DIVIDE ( [Sales Value] - [Sales Value PY], [Sales Value PY] )
+
+// ---------- [Turnover]
+
+Stock Turnover =
+// Annualised: sales at standard cost over average stock value
+VAR months = DISTINCTCOUNT ( dim_date[YearMonth] )
+RETURN DIVIDE ( [Sales Value] * 12 / months, [Average Stock Value] )
+
+Days of Inventory =
+DIVIDE ( 365, [Stock Turnover] )
+
+// ---------- [Supplier performance]   (use with ReceiptDateKey relationship active)
+
+Receipts = COUNTROWS ( fact_goods_receipt )
+
+On-time Delivery % =
+DIVIDE ( CALCULATE ( [Receipts], fact_goods_receipt[IsOnTime] = TRUE () ), [Receipts] )
+
+Average Delay (late receipts) =
+CALCULATE ( AVERAGE ( fact_goods_receipt[DelayDays] ), fact_goods_receipt[DelayDays] > 0 )
+
+Rejection Rate =
+DIVIDE (
+    SUM ( fact_goods_receipt[QuantityRejected] ),
+    SUM ( fact_goods_receipt[QuantityReceived] )
+)
+
+Purchase Order Value = SUM ( fact_purchase_order_line[OrderValue] )
+
+Supplier Score =
+// 0–100: 60% on-time delivery, 25% quality, 15% delay severity (14+ days late scores 0)
+VAR otd = [On-time Delivery %]
+VAR quality = 1 - MIN ( [Rejection Rate] * 20, 1 )          // 5% rejected → 0
+VAR delay = 1 - MIN ( DIVIDE ( [Average Delay (late receipts)], 14 ), 1 )
+RETURN IF ( NOT ISBLANK ( otd ), 100 * ( 0.60 * otd + 0.25 * quality + 0.15 * delay ) )
+
+// ---------- [Formatting helpers]
+
+Critical Parts Color =
+IF ( [Critical Parts] > 0, "#C2410C", "#15803D" )
+
+On-time Delivery Color =
+SWITCH ( TRUE (), [On-time Delivery %] >= 0.95, "#15803D", [On-time Delivery %] >= 0.85, "#B45309", "#C2410C" )

@@ -1,0 +1,35 @@
+{
+  "name": "tr_daily_0500",
+  "properties": {
+    "description": "Every day at 05:00 so the dashboard is current when planners start.",
+    "runtimeState": "Started",
+    "pipelines": [
+      {
+        "pipelineReference": {
+          "referenceName": "pl_master_daily",
+          "type": "PipelineReference"
+        },
+        "parameters": {
+          "LoadDate": "@trigger().scheduledTime"
+        }
+      }
+    ],
+    "type": "ScheduleTrigger",
+    "typeProperties": {
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "startTime": "2024-01-01T05:00:00",
+        "timeZone": "W. Europe Standard Time",
+        "schedule": {
+          "hours": [
+            5
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "ls_sqlserver_onprem",
+  "properties": {
+    "type": "SqlServer",
+    "connectVia": {
+      "referenceName": "ir-selfhosted-onprem",
+      "type": "IntegrationRuntimeReference"
+    },
+    "description": "On-premises SQL Server; database chosen per dataset (DealerPortal, Quality)",
+    "parameters": {
+      "DatabaseName": {
+        "type": "String"
+      }
+    },
+    "typeProperties": {
+      "connectionString": "Integrated Security=False;Data Source=sql-ops.internal;Initial Catalog=@{linkedService().DatabaseName};User ID=svc_adf_read",
+      "password": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "ls_keyvault",
+          "type": "LinkedServiceReference"
+        },
+        "secretName": "sqlserver-onprem-password"
+      }
+    }
+  }
+}

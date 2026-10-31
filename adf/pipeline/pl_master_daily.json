@@ -1,0 +1,146 @@
+{
+  "name": "pl_master_daily",
+  "properties": {
+    "description": "Daily run: ingest ERP and SQL Server in parallel, load the warehouse, refresh the Power BI dataset; alert on failure.",
+    "parameters": {
+      "LoadDate": {
+        "type": "string",
+        "defaultValue": "@utcNow()"
+      }
+    },
+    "variables": {
+      "FailedStep": {
+        "type": "String"
+      }
+    },
+    "activities": [
+      {
+        "name": "Ingest ERP",
+        "type": "ExecutePipeline",
+        "typeProperties": {
+          "pipeline": {
+            "referenceName": "pl_ingest_erp",
+            "type": "PipelineReference"
+          },
+          "waitOnCompletion": true,
+          "parameters": {
+            "LoadDate": {
+              "value": "@pipeline().parameters.LoadDate",
+              "type": "Expression"
+            }
+          }
+        }
+      },
+      {
+        "name": "Ingest SQL Server",
+        "type": "ExecutePipeline",
+        "typeProperties": {
+          "pipeline": {
+            "referenceName": "pl_ingest_sqlserver",
+            "type": "PipelineReference"
+          },
+          "waitOnCompletion": true,
+          "parameters": {
+            "LoadDate": {
+              "value": "@pipeline().parameters.LoadDate",
+              "type": "Expression"
+            }
+          }
+        }
+      },
+      {
+        "name": "Load warehouse",
+        "type": "ExecutePipeline",
+        "dependsOn": [
+          {
+            "activity": "Ingest ERP",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Ingest SQL Server",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "pipeline": {
+            "referenceName": "pl_load_dw",
+            "type": "PipelineReference"
+          },
+          "waitOnCompletion": true,
+          "parameters": {
+            "LoadDate": {
+              "value": "@pipeline().parameters.LoadDate",
+              "type": "Expression"
+            }
+          }
+        }
+      },
+      {
+        "name": "Refresh Power BI dataset",
+        "type": "WebActivity",
+        "dependsOn": [
+          {
+            "activity": "Load warehouse",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 120,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "method": "POST",
+          "url": "https://api.powerbi.com/v1.0/myorg/groups/<workspace-id>/datasets/<dataset-id>/refreshes",
+          "body": {
+            "notifyOption": "NoNotification"
+          },
+          "authentication": {
+            "type": "MSI",
+            "resource": "https://analysis.windows.net/powerbi/api"
+          }
+        }
+      },
+      {
+        "name": "Alert on failure",
+        "type": "WebActivity",
+        "dependsOn": [
+          {
+            "activity": "Ingest ERP",
+            "dependencyConditions": [
+              "Failed"
+            ]
+          },
+          {
+            "activity": "Ingest SQL Server",
+            "dependencyConditions": [
+              "Failed"
+            ]
+          },
+          {
+            "activity": "Load warehouse",
+            "dependencyConditions": [
+              "Failed"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "method": "POST",
+          "url": "https://<logic-app-alert-endpoint>",
+          "body": {
+            "value": "{\"pipeline\":\"@{pipeline().Pipeline}\",\"runId\":\"@{pipeline().RunId}\",\"message\":\"Spare-parts daily load failed\"}",
+            "type": "Expression"
+          }
+        }
+      }
+    ]
+  }
+}

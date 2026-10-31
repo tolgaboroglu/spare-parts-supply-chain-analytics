@@ -1,0 +1,10 @@
+{
+  "name": "ls_adls_lake",
+  "properties": {
+    "type": "AzureBlobFS",
+    "description": "Data lake (raw zone), managed identity",
+    "typeProperties": {
+      "url": "https://stsparepartslake.dfs.core.windows.net/"
+    }
+  }
+}

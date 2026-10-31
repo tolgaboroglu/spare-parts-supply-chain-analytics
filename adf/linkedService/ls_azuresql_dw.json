@@ -1,0 +1,11 @@
+{
+  "name": "ls_azuresql_dw",
+  "properties": {
+    "type": "AzureSqlDatabase",
+    "description": "Azure SQL data warehouse (stg, dw, control schemas), managed identity",
+    "typeProperties": {
+      "connectionString": "Data Source=sql-spareparts-dw.database.windows.net;Initial Catalog=sqldb-spareparts-dw;Connect Timeout=30",
+      "authenticationType": "SystemAssignedManagedIdentity"
+    }
+  }
+}

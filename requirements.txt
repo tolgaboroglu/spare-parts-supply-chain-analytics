@@ -1,0 +1,5 @@
+numpy>=2.0
+pandas>=2.2
+duckdb>=1.1
+playwright>=1.45  # only for dashboard/render.py
+pytest>=8

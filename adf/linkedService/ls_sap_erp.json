@@ -1,0 +1,26 @@
+{
+  "name": "ls_sap_erp",
+  "properties": {
+    "type": "SapTable",
+    "connectVia": {
+      "referenceName": "ir-selfhosted-onprem",
+      "type": "IntegrationRuntimeReference"
+    },
+    "description": "SAP ERP (materials, vendors, purchasing, stock) through the self-hosted integration runtime",
+    "typeProperties": {
+      "server": "sap-erp.internal",
+      "systemNumber": "00",
+      "clientId": "100",
+      "language": "EN",
+      "userName": "SVC_ADF_READ",
+      "password": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "ls_keyvault",
+          "type": "LinkedServiceReference"
+        },
+        "secretName": "sap-erp-password"
+      }
+    }
+  }
+}

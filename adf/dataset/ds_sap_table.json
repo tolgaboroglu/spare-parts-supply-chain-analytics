@@ -1,0 +1,21 @@
+{
+  "name": "ds_sap_table",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_sap_erp",
+      "type": "LinkedServiceReference"
+    },
+    "parameters": {
+      "TableName": {
+        "type": "String"
+      }
+    },
+    "type": "SapTableResource",
+    "typeProperties": {
+      "tableName": {
+        "value": "@dataset().TableName",
+        "type": "Expression"
+      }
+    }
+  }
+}
